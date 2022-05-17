@@ -1,0 +1,33 @@
+user should be able to say wake word and a command combined.
+
+Wake word has a listening timeout period, wherein further commands can be issued without having to repeat the wake word.
+
+commands:
+
+	bright
+	brighter
+	brightest
+
+	left
+	right
+	up
+	down
+	(more, little more)
+
+	flood on/off (light)
+
+
+
+start speech recognition library
+listen for wake word
+
+if wake word is detected:
+	sound feedback
+	trim off words from before wake word
+	command = words following wake word
+	run command function
+	wait for timeout period for another command
+	if command detected:
+		run command function
+	
+	

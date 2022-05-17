@@ -1,0 +1,6 @@
+pip3:
+SpeechRecognition
+
+apt-get:
+python-pyaudio
+python3-pyaudio

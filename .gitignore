@@ -1,0 +1,5 @@
+.stfolder
+*.vs
+*.pyproj
+.Debug
+.Release
