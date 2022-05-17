@@ -4,10 +4,12 @@
 # Summary
 BrightBoy is a flashlight that points wherever you tell him to. He's the next best thing to having someone standing next to you holding a flashlight. You simply boot him up, then tell him what to do using voice commands. Later versions will support active IR or computer vision tracking so he can autonomously and intelligently point the flashlight.
 ## Software
-A Python script handles audio processing, speech recognition, controlling the pan-tilt servos, and turning the flashlight LEDs on/off. Uses speech_recognition library to wrap Google speech recognition API, therefore requires an internet connection. Only listens for wakeword within set windows, so quite finnicky. Would like to switch to Vosk for offline speech recognition (to fulfill "No internet connection needed" requirement below).
+A Python script handles audio processing, speech recognition, controlling the pan-tilt servos, and turning the flashlight LEDs on/off. Includes emulator for testing without actual hardware and simple pantilt HAT test script.
+
+Currently uses speech_recognition library to wrap Google speech recognition API, therefore requires an internet connection. Only listens for wakeword within set windows, so quite finnicky. Would like to switch to Vosk for offline speech recognition (to fulfill "No internet connection needed" requirement below).
 ## Hardware 
 V1 is built using a Raspberry Pi B+, the Adafruit Voice Bonnet, an Adafruit WS2812 RGBW LED ring, and the Pimoroni Pan-Tilt HAT.
-### Desired Features for V1:
+## Desired Features for V1:
 - Control with voice
 	- On/off
 	- Up/down
