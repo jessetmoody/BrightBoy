@@ -1,5 +1,7 @@
 .stfolder
 *.vs
 *.pyproj
+*.pyc
 .Debug
 .Release
+source/model
