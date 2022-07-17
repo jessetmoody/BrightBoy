@@ -30,10 +30,10 @@ class Pantilthat:
         print(f'servo tilted {self._tiltAngle} degrees')
 
     def set_all(self, one, two, three, four): # TODO: Change parameter var names to better match their actual fn
-        print(f'Ring light levels set')
+        print(f'Ring light levels set (set_all)')
 
     def show(self):
-        print(f'Ring light levels activated (ON)')
+        print(f'Ring light levels activated (show)')
 
     def get_pan(self):
         return self._panAngle
