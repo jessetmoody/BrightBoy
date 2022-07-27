@@ -12,12 +12,16 @@ import re
 import time
 import os
 import platform
+import logging
 try:
     import pantilthat as pth
 except:
     import pantilthatEmulator
     pth = pantilthatEmulator.Pantilthat() # instantiate Pantilthat object (class)
-killThreads = False
+
+logging.basicConfig(level=logging.INFO, format='%(message)s') # Setup logging (debugging print statements)
+# TODO Fix log messages so they're using message categories correctly
+killThreads = False # Used for catching Keyboard Interrupts
 
 q = queue.Queue()  # stores streaming audio data from sounddevice
 wordQueue = queue.Queue() # stores speech to text words from recognizeWords()
@@ -70,33 +74,35 @@ def servoDo(command, modifier=22): # modifier defaults to 22 if none was given, 
             ledSet('off') # turn off LEDs
             os.system("sudo shutdown -h now") # issue shutdown command to system
         else:
-            print("Not running on RasPi. Aborting shutdown.") # don't power down if running on Windows (debugging)
+            logging.info("Not running on RasPi. Aborting shutdown.") # don't power down if running on Windows (debugging)
     elif command == "restart": # restart the systemctl brightboy.service
         if 'raspberrypi' in str(platform.uname()): # check if running on RasPi
             ledSet('off') # turn off LEDs
             os.system("sudo systemctl restart brightboy.service") # issue command to systemctl to restart service
-            print("Issuing sudo systemctl restart brightboy.service")
+            logging.info("Issuing sudo systemctl restart brightboy.service")
         else:
-            print("Not running on RasPi. Aborting restart.") # don't restart service if running on Windows (debugging)
+            logging.info("Not running on RasPi. Aborting restart.") # don't restart service if running on Windows (debugging)
     elif command == "stop": # stop the systemctl brightboy.service
         ledSet('off') # turn off LEDs
         if 'raspberrypi' in str(platform.uname()): # check if running on RasPi
-            print("Stopping brightboy.service")
+            logging.info("Stopping brightboy.service")
             os.system("sudo systemctl stop brightboy.service") # issue command to systemctl to stop service
         else:
-            print("Not running on RasPi. Executing via sys.exit().") # end Python script on Windows
+            logging.info("Not running on RasPi. Executing via sys.exit().") # end Python script on Windows
             os._exit(1) # exit Python program
 
     # print angles
-    print(f'newPanAngle = {pth.get_pan()}')
-    print(f'newTiltAngle = {pth.get_tilt()}')
+    logging.info(f'newPanAngle = {pth.get_pan()}')
+    logging.info(f'newTiltAngle = {pth.get_tilt()}')
 
 # Convert audio stream from microphone into text
 def recognizeWords():
+    prevWords = [] # list for storing previous partial result 
+
     try:
         if not os.path.exists("model"):
-            print ("Please download a model for your language from https://alphacephei.com/vosk/models")
-            print ("and unpack as 'model' in the current folder.")
+            logging.info ("Please download a model for your language from https://alphacephei.com/vosk/models")
+            logging.info ("and unpack as 'model' in the current folder.")
             global endProgram # access global var previously defined
             endProgram = True # signal to main thread to end program
             return
@@ -114,18 +120,32 @@ def recognizeWords():
         with sd.RawInputStream(samplerate, blocksize = 8000, device=myDevice, dtype='int16',
                                 channels=1, callback=callback):
             rec = vosk.KaldiRecognizer(model, samplerate)
+            ledBlink('white') # indicate recognizeWords is ready to go
             while True:
-                data = q.get()
-                if rec.AcceptWaveform(data):
-                    # words = re.findall(r'(?<=\"text\" : \")(.+)(?=\")', rec.Result()): # use regex to trim unneeded characters (old method)
-                    words = rec.Result() # grab string of recognized text (contains leading and trailing characters)
-                    words = words[14:-3] # trim leading and trailing characters from string returned by rec.Result()
-                    if words and words != "huh" and words != "what": # if not empty or not any of the words usually heard when it's silent.
-                                                                     # Necessary bc otherwise rec.Result() returns empty list every 20s
-                                                                     # regardless of whether or not any words were heard.
-                        wordQueue.put(words) # put string of heard words into queue as new item
+                data = q.get() # get audio data from sound device (via queue)
+                if rec.AcceptWaveform(data): # pass audio data to recognizer and check if final result exists
+                    rec.Result() # call this merely to clear the partial result and start afresh
+                    prevWords = [] # clear out the prevWords whenever silence timeout
+                    words = [] # clear out words whenever silence timeout
+                else:
+                    words = rec.PartialResult() # grab string of recognized text (contains leading and trailing characters)
+                    words = words[17:-3] # trim leading and trailing characters from string returned by rec.PartialResult()
+                if words and words != "huh" and words != "what": # if not empty and not any of the words usually heard when it's silent.
+                                                                    # Necessary bc rec.PartialResult() returns empty string whether or
+                                                                    # not any words were heard.
+                    words = words.split() # split into list of strings
+                    logging.debug(f'rec.PartialResult() = {words}')
+                    if len(words) > len(prevWords): # if a new word has been heard. TODO: Check spelling of each, not just length
+                        logging.debug(f'PartialResult() > prevWords\nprevWords = {prevWords}')
+                        newWords = words[-(len(words)-(len(prevWords))):] # keep only new words. Use negative indexing.
+                        logging.debug(f'newWords = {newWords}')
+                        for word in newWords: # split in case multiple words were received (this sometimes happens)
+                            wordQueue.put(word) # place each word into queue as new individual items
+                            logging.debug(f'putting word "{word}" in wordQueue')
+                    prevWords = words # replace old sentence with new one
+                    logging.debug(f'setting prevWords = {prevWords}]\n\n-----------------------')
     except Exception as e:
-        print(e)
+        logging.info(e)
 
 def ledSet(color):
     global currentLEDcolor
@@ -147,7 +167,12 @@ def ledSet(color):
             currentLEDcolor = color
             return
         if color == 'yellow':
-            pth.set_all(10,40,0,0)
+            pth.set_all(20,40,0,0)
+            pth.show()
+            currentLEDcolor = color
+            return
+        if color == 'darkyellow':
+            pth.set_all(2,5,0,0)
             pth.show()
             currentLEDcolor = color
             return
@@ -161,8 +186,9 @@ def ledSet(color):
             pth.show()
             currentLEDcolor = color
             return
-        print("Error: ledSet invalid color")
+        logging.info("Error: ledSet invalid color")
 
+# Momentarily change color of LED to new color or turn current color on then off
 def ledBlink(color): # TODO: Change to non-blocking via threading. This is currently slowing everything down!!
     global currentLEDcolor
     if color != currentLEDcolor: # if color is different than current LED color
@@ -175,11 +201,36 @@ def ledBlink(color): # TODO: Change to non-blocking via threading. This is curre
         time.sleep(0.1) # wait 200ms
         ledSet(color) # turn original color back on (color = currentLEDcolor)
 
+# Poll wordQueue and check each new word(s) for wake word(s)
+def heardWakeWord():
+    if not wordQueue.empty(): # check if wordQueue has any words in it
+        word = wordQueue.get()
+        logging.info(f'word from queue={word}')
+        if word in compoundWakeWords: # if word is any of the possible compound wake words
+            logging.info("heard compound wake word")
+            return True # return to main as True
+        elif word in wakeWords1: # if word is any of the possible 1st wake words
+            logging.info(f'heard 1st wake word') 
+            startTime = time.perf_counter() # get the current time
+            while(time.perf_counter() - startTime < 1.5): # allow for 2nd word to be spoken after 1.5s (wait for it)
+                if not wordQueue.empty(): # make sure there's another word available before checking wordQueue
+                    word2 = wordQueue.get() # get next word in wordQueue
+                    if word2 in wakeWords2: # if word2 is any of the possible 2nd wake words
+                        logging.info(f'heard 2nd wake word (therefore full wake word)')
+                        return True # a full wake word was heard, return to main as True
+                    else:
+                        break # word2 was not a valid 2nd wake word
+    return False # will only reach here if wordQueue was empty or no wake words were found
+
+
 if __name__ == "__main__":
-    wakeWords = ["bright boy ", "right boy ", "Bright boy ", "Brightboy ", "bribe oy ",
-                 "right boy ", "brightpoint", "white boy", "breakpoint", "brake boy"] # wake word and homonyms
+    compoundWakeWords = ["brightboy", "brightpoint", "breakpoint", "breitbart"] # compound wake words (+homonyms)
+    wakeWords1 = ["bright", "right", "bribe", "white", "brake", "why"] # first part of two word wake words (+homonyms)
+    wakeWords2 = ["boy", "oy"] # second part of two part wake words
     commands = ["center", "Center", "up", "down", "right", "left", "on", "off", "power down", "restart", "stop"]
     modifiers = {"little":11, "bit":11, "tad":5, "smidge":2, "hair":1}
+
+    modifierToApply = '' # used to store command modifier applied to subsequent commands
 
     # Center servos and setup NeoPixel ring
     pth.pan(0)
@@ -195,31 +246,30 @@ if __name__ == "__main__":
 
         while endProgram == False: # endProgram var is controlled by recognizeWords() thread
             if currentLEDcolor != 'white':
-                ledSet('green') # indicate "listening for words"
-            if not wordQueue.empty():
-                ledBlink('yellow') # indicate heard words or "words added to queue
-                words = wordQueue.get()
-                print(f'words from queue={words}')
-                if any(x in words for x in wakeWords): # if any wakewords appear in recognized words
-                    print("heard wake word")
-                    ledBlink('red') # indicate "processing"
-                    splitWords = re.split(r'|'.join(wakeWords), words) # split words into list. bar symbol (|) is used to
-                                                                       # join words in wakeWords list into a regex "OR" string
-                    afterWakeWord = splitWords[1] # save list as new list starting after wake word
-                    foundCommands = re.findall(r'|'.join(commands), afterWakeWord) # regex OR pattern example: r'word1|word2|word3'
-                    foundModifiers = re.findall(r'|'.join(modifiers), afterWakeWord) # same approach as prev line
-                    print(f'foundCommands={foundCommands}')
-                    print(f'foundModifiers={foundModifiers}')
-                    for idx, c in enumerate(foundCommands): # using "idx, c" to allow for indexing through modifiers as well as commands
-                        try:
-                            print(f'sending {c} command to servoDo with {foundModifiers[idx]} modifier')
-                            servoDo(c, modifiers[foundModifiers[idx]]) # pass command (c) and value from modifiers dictionary using idx
-                        except:
-                            print(f'sending {c} command to servoDo with no modifier')
-                            servoDo(c) # if no modifiers, just send command
-
+                ledSet('darkyellow') # indicate "listening for words"
+            if heardWakeWord():
+                startTime = time.perf_counter() # get the current time
+                while(time.perf_counter() - startTime < 3.5): # while 3.5s hasn't elapsed (after last command)
+                    if currentLEDcolor != 'white': # don't turn off the flashlight if it's on
+                        ledSet('green') # indicate "heard wake word, listening for commands"
+                    if not wordQueue.empty():
+                        word = wordQueue.get()
+                        logging.info(f'got word from wordQueue = {word}')
+                        if word in commands:
+                            logging.info(f'foundCommand={word}')
+                            if modifierToApply: # if a modifier to apply exists (previously heard)
+                                logging.info(f'sending {word} command to servoDo with {modifierToApply} modifier')
+                                servoDo(word, modifierToApply) # send command with modifier
+                            else:
+                                servoDo(word) # send command with no modifier
+                            startTime = time.perf_counter() # reset the 3.5s timer after each command/modifier
+                        elif word in modifiers:
+                            logging.info(f'foundModifier={word}')
+                            modifierToApply = word # save modifier for applying to next command
+                            startTime = time.perf_counter() # reset the 3.5s timer after each command/modifier
+                        
     except KeyboardInterrupt:
         ledSet('off') # turn off LEDs
         killThreads = True
-        print("Exiting module")
+        logging.info("Exiting module")
         sys.exit(0)
